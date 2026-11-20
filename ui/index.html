@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: yejian-image:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>页间</title>
+  <link rel="stylesheet" href="./app.css">
+</head>
+<body>
+  <header class="titlebar">
+    <span class="brand"><span class="brand-mark" data-icon="book"></span>页间</span>
+    <nav aria-label="应用菜单" class="menus">
+      <button data-menu="file">文件</button><button data-menu="edit">编辑</button><button data-menu="format">格式</button><button data-menu="view">视图</button>
+    </nav>
+  </header>
+  <div class="workspace">
+    <aside aria-label="文档导航">
+      <div class="aside-heading"><span>文档导航</span><button class="icon-button" data-action="sidebar" title="收起侧栏" aria-label="收起侧栏" data-icon="panel"></button></div>
+      <div class="side-tabs" aria-label="导航内容"><button id="outline-tab" aria-pressed="true"><i data-icon="outline"></i>大纲</button><button id="recent-tab" aria-pressed="false"><i data-icon="clock"></i>最近</button></div>
+      <nav id="navigation" aria-label="导航条目"></nav>
+      <div class="side-actions"><button data-action="new"><i data-icon="new"></i>新建文档<kbd>Ctrl N</kbd></button><button data-action="open"><i data-icon="folder"></i>打开文档<kbd>Ctrl O</kbd></button></div>
+    </aside>
+    <main>
+      <div class="docbar">
+        <button id="expand" class="icon-button" data-action="sidebar" title="展开侧栏" aria-label="展开侧栏" data-icon="panel"></button>
+        <span class="file-label"><i data-icon="file"></i><span id="filename">使用指南.md</span><span id="dirty-dot" title="有未保存的修改" hidden></span></span>
+        <div class="view-switch" aria-label="编辑模式"><button id="live-mode" aria-pressed="true"><i data-icon="pen"></i>即时编辑</button><button id="source-mode" aria-pressed="false"><i data-icon="code"></i>源码</button></div>
+        <button class="icon-button save-button" data-action="save" aria-label="保存文档" title="保存文档（Ctrl + S）" data-icon="save"></button>
+      </div>
+      <div id="editor"></div>
+    </main>
+  </div>
+  <footer><span class="status"><i id="state-light"></i><span id="status-text">使用指南</span></span><div class="metrics"><span id="word-count">0 字</span><span id="position">行 1，列 1</span><span>UTF-8</span><button data-action="focus" title="切换专注模式（F8）" aria-label="切换专注模式" data-icon="focus"></button></div></footer>
+  <script src="./app.js" defer></script>
+</body>
+</html>
