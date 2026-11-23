@@ -1,0 +1,100 @@
+name: 发布 Windows 版本
+run-name: 发布页间 ${{ inputs.version }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 正式版本号，例如 1.3.1
+        required: true
+        type: string
+
+permissions:
+  contents: write
+concurrency:
+  group: publish-windows
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: 确认版本与源码
+        shell: pwsh
+        run: |
+          if ($env:VERSION -cnotmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') { throw '请填写三段数字正式版本号' }
+          $tag = "v$env:VERSION"
+          $versions = git tag --list | Where-Object { $_ -match '^v\d+\.\d+\.\d+$' }
+          foreach ($existing in $versions) {
+            if ([version]$existing.Substring(1) -gt [version]$env:VERSION) { throw '已有更高的版本' }
+          }
+          if ($versions -contains $tag) {
+            $published = gh release view $tag --json isDraft --jq '.isDraft' 2>$null
+            if ($published -eq 'false') { throw '此版本已经公开发布' }
+            git checkout --detach $tag
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          }
+          $current = node -p "require('./package.json').version"
+          if ([version]$env:VERSION -lt [version]$current) { throw '版本号低于源码版本' }
+          if ($current -ne $env:VERSION) {
+            if ($versions -contains $tag) { throw '标签与源码版本不一致' }
+            npm version $env:VERSION --no-git-tag-version --ignore-scripts
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add package.json package-lock.json
+            git commit -m "发布页间 $env:VERSION"
+          }
+      - run: npm ci
+      - run: npm test
+      - run: npm run test:desktop
+      - run: npm run dist
+      - run: node scripts/verify-release.cjs
+      - run: node tests/portable.cjs "release/Yejian-Portable-$env:VERSION-x64.exe"
+      - name: 验证应用内下载、文档保护及实际安装重启
+        env:
+          RUNNER_ENVIRONMENT: ${{ runner.environment }}
+        run: |
+          npx --no-install electron-builder --win nsis --x64 --publish never "-c.extraMetadata.version=$env:VERSION-qa.0" "-c.directories.output=.cache/upgrade-test"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node tests/upgrade.cjs
+      - name: 发布源码、安装包和更新清单
+        shell: pwsh
+        run: |
+          $tag = "v$env:VERSION"
+          if (!(git tag --list $tag)) {
+            git tag $tag
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            git push --atomic origin HEAD:refs/heads/main "refs/tags/$tag"
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          }
+          $draft = gh release view $tag --json isDraft --jq '.isDraft' 2>$null
+          if ($LASTEXITCODE) {
+            gh release create $tag --verify-tag --draft --title "页间 $env:VERSION" --notes "Windows x64 安装版支持应用内更新。首次从 1.2.0 升级，请手动运行 Setup 安装包。免安装版请下载 Portable 文件。"
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          } elseif ($draft -ne 'true') { throw '此版本已经公开发布' }
+          $setup = "release/Yejian-Setup-$env:VERSION-x64.exe"
+          $files = @($setup, "$setup.blockmap", "release/Yejian-Portable-$env:VERSION-x64.exe", 'release/latest.yml')
+          gh release upload $tag @files --clobber
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $releaseId = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$tag" --jq .id
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $assets = gh api "repos/$env:GITHUB_REPOSITORY/releases/$releaseId/assets" | ConvertFrom-Json
+          foreach ($file in $files) {
+            $asset = @($assets | Where-Object name -eq (Split-Path $file -Leaf))
+            $digest = 'sha256:' + (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($asset.Count -ne 1 -or $asset[0].digest -ne $digest) { throw "远端文件校验失败 $file" }
+          }
+          gh release edit $tag --draft=false --latest

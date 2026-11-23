@@ -4,10 +4,14 @@
 
 ## 下载
 
-| 版本 | 使用方式 |
+打开[最新正式版下载页](https://github.com/LuoYan-33/yejian-editor/releases/latest)，在附件（Assets）里选择适合的 EXE。
+
+| 文件名 | 使用方式 |
 | --- | --- |
-| [Windows 安装版](https://github.com/LuoYan-33/yejian-editor/releases/download/v1.2.0/Yejian-Setup-1.2.0-x64.exe) | 双击 EXE，按向导安装。 |
-| [Windows 免安装版](https://github.com/LuoYan-33/yejian-editor/releases/download/v1.2.0/Yejian-Portable-1.2.0-x64.exe) | 下载后直接双击运行。 |
+| `Yejian-Setup-版本号-x64.exe` | 双击安装。1.3.0 起，启动时会检查更新，也可从「帮助 → 检查更新」手动检查。 |
+| `Yejian-Portable-版本号-x64.exe` | 双击运行。在「帮助 → 下载新版免安装包」获取新文件，关闭旧版后替换。 |
+
+使用 1.2.0 时，请先手动安装一次新版。之后发现更新时，点击底部状态栏的「下载更新」，下载期间可继续写作。点击「重启安装」后，若文档有修改，可选择保存、放弃或取消。确认后编辑器会安装并重新打开。
 
 ## 写作
 
@@ -25,4 +29,12 @@ npm ci
 npm start
 ```
 
-运行 `npm test` 验证文件读写，运行 `npm run test:desktop` 验证桌面编辑流程。运行 `npm run dist` 在 `release/` 生成安装版与免安装版 EXE。
+运行 `npm test` 验证文件读写和更新逻辑，运行 `npm run test:desktop` 验证桌面编辑流程。运行 `npm run dist` 在 `release/` 生成安装版、免安装版和更新清单。
+
+## 发布新版本
+
+1. 将准备发布的代码推送到 `main`。
+2. 打开 [GitHub Actions 的「发布 Windows 版本」](https://github.com/LuoYan-33/yejian-editor/actions/workflows/release.yml)，点击 **Run workflow**，选择 `main` 并输入更高的正式版本号，例如 `1.3.1`。
+3. 点击 **Run workflow** 确认。工作流会更新源码版本号、运行测试、构建 Windows 程序并创建标签。安装包和更新清单一起校验通过后，版本会出现在下载页，已安装的用户即可收到更新。
+
+工作流使用 GitHub 提供的仓库令牌。若上传中断，可以用同一版本号重新运行以完成草稿发布。

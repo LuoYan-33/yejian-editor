@@ -11,7 +11,7 @@
   <header class="titlebar">
     <span class="brand"><span class="brand-mark" data-icon="book"></span>页间</span>
     <nav aria-label="应用菜单" class="menus">
-      <button data-menu="file">文件</button><button data-menu="edit">编辑</button><button data-menu="format">格式</button><button data-menu="view">视图</button>
+      <button data-menu="file">文件</button><button data-menu="edit">编辑</button><button data-menu="format">格式</button><button data-menu="view">视图</button><button data-menu="help">帮助</button>
     </nav>
   </header>
   <div class="workspace">
@@ -31,7 +31,7 @@
       <div id="editor"></div>
     </main>
   </div>
-  <footer><span class="status"><i id="state-light"></i><span id="status-text">使用指南</span></span><div class="metrics"><span id="word-count">0 字</span><span id="position">行 1，列 1</span><span>UTF-8</span><button data-action="focus" title="切换专注模式（F8）" aria-label="切换专注模式" data-icon="focus"></button></div></footer>
+  <footer><span class="status"><i id="state-light"></i><span id="status-text">使用指南</span></span><div id="updates" aria-live="polite"><span id="update-text"></span><button id="update-action" hidden></button></div><div class="metrics"><span id="word-count">0 字</span><span id="position">行 1，列 1</span><span>UTF-8</span><button data-action="focus" title="切换专注模式（F8）" aria-label="切换专注模式" data-icon="focus"></button></div></footer>
   <script src="./app.js" defer></script>
 </body>
 </html>

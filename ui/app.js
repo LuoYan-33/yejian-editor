@@ -12,6 +12,7 @@ const desk = window.desk;
 let documentName = '使用指南.md', filePath = '', isGuide = true, tab = 'outline';
 let recent = [], outline = [], saved, dirty = false, pipeline = Promise.resolve();
 let view, countTimer;
+let installing = false;
 installIcons();
 
 /** 更新计数时将汉字逐字统计，连续的英文或数字按词统计。 */
@@ -140,6 +141,31 @@ function switchMode(source) {
   view.focus();
 }
 
+/** 在状态栏提供当前可执行的更新操作，保持正文可继续编辑。 */
+function showUpdate({ phase, version, percent }) {
+  const states = {
+    checking: ['正在检查更新…'],
+    current: ['已是最新版本 ' + version],
+    available: ['发现新版本 ' + version, '下载更新', 'downloadUpdate'],
+    downloading: ['正在下载 ' + version + ' · ' + percent + '%'],
+    ready: [version + ' 已就绪', '重启安装', 'installUpdate'],
+    installing: ['正在重启安装 ' + version + '…'],
+    failed: ['更新失败', '重新检查', 'checkUpdate'],
+    development: ['开发版 ' + version + ' · 请在安装版中更新']
+  };
+  if (phase === 'failed' && installing) {
+    installing = false;
+    element('editor').inert = false;
+    view.focus();
+  }
+  const [message, label, action] = states[phase];
+  element('update-text').textContent = message;
+  const button = element('update-action');
+  button.textContent = label || '';
+  button.hidden = !action;
+  button.onclick = action ? () => enqueue(action) : null;
+}
+
 /** 在载入和关闭期间冻结文档，避免异步文件操作覆盖新输入。 */
 async function switchDocument(action, argument) {
   const editor = element('editor');
@@ -150,6 +176,12 @@ async function switchDocument(action, argument) {
       return;
     }
     if (action === 'close') return desk.close();
+    if (action === 'installUpdate') {
+      installing = true;
+      try { if (!await desk.installUpdate()) installing = false; }
+      catch (error) { installing = false; throw error; }
+      return;
+    }
     if (action === 'new') {
       await desk.fresh();
       showDocument({ text: '' });
@@ -158,20 +190,22 @@ async function switchDocument(action, argument) {
       if (loaded) showDocument(loaded);
     }
   } finally {
-    editor.inert = false;
+    editor.inert = installing;
   }
   view.focus();
 }
 
 /** 处理桌面菜单、侧栏按钮和原生快捷键。 */
 async function run(action, argument) {
-  if (['new', 'open', 'recent', 'pending', 'close'].includes(action)) return switchDocument(action, argument);
+  if (installing) return;
+  if (['new', 'open', 'recent', 'pending', 'close', 'installUpdate'].includes(action)) return switchDocument(action, argument);
+  if (action === 'checkUpdate' || action === 'downloadUpdate') return desk[action]();
   if (action === 'save' || action === 'saveAs') return save(action === 'saveAs');
   if (action === 'mode') return switchMode(!view.state.field(sourceMode));
   if (action === 'sidebar') return document.body.classList.toggle('sidebar-off');
   if (action === 'focus') {
     const active = document.body.classList.toggle('focus-mode');
-    document.querySelector('footer button').setAttribute('aria-pressed', String(active));
+    document.querySelector('[data-action="focus"]').setAttribute('aria-pressed', String(active));
     view.focus();
     return;
   }
@@ -216,6 +250,7 @@ async function start() {
   element('outline-tab').onclick = () => { tab = 'outline'; refreshNavigation(); };
   element('recent-tab').onclick = () => { tab = 'recent'; refreshNavigation(); };
   desk.onCommand(enqueue);
+  desk.onUpdateState(showUpdate);
   window.addEventListener('keydown', shortcut, true);
   const initial = await desk.start();
   recent = initial.recent;

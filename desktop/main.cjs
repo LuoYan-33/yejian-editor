@@ -3,11 +3,14 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { readDocument, writeDocument, hasChanged, resolveImage } = require('./files.cjs');
 const { types: imageTypes } = require('./bitmap.cjs');
+const { createUpdates } = require('./updates.cjs');
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'yejian-image', privileges: { standard: true, secure: true } }]);
 app.setAppUserModelId('cn.yejian.markdown.editor');
 let windowHandle, current, menu, ready = false, allowClose = false;
 let recent = [];
+let updates;
+const portable = Boolean(process.env.PORTABLE_EXECUTABLE_FILE);
 const queuedFiles = [];
 const markdownFilter = [{ name: 'Markdown 文档', extensions: ['md', 'markdown', 'mdown', 'mkd', 'txt'] }];
 
@@ -71,7 +74,8 @@ function buildMenu() {
       null, ['粗体', 'bold', 'Ctrl+B'], ['斜体', 'italic', 'Ctrl+I'], ['行内代码', 'inlineCode'],
       null, ['引用', 'quote'], ['无序列表', 'bullet'], ['有序列表', 'ordered'], ['任务列表', 'task'], ['代码块', 'fence'],
       null, ['插入图片…', 'image'], ['插入表格', 'table'], ['插入分隔线', 'rule']]],
-    view: ['视图', [['切换即时编辑 / 源码', 'mode', 'Ctrl+/'], ['显示 / 隐藏侧栏', 'sidebar', 'Ctrl+Shift+L'], ['专注模式', 'focus', 'F8']]]
+    view: ['视图', [['切换即时编辑 / 源码', 'mode', 'Ctrl+/'], ['显示 / 隐藏侧栏', 'sidebar', 'Ctrl+Shift+L'], ['专注模式', 'focus', 'F8']]],
+    help: ['帮助', [[portable ? '下载新版免安装包…' : '检查更新', 'checkUpdate']]]
   };
   return Menu.buildFromTemplate(Object.entries(groups).map(([id, [label, items]]) => ({
     id, label, submenu: items.map(item => {
@@ -87,6 +91,7 @@ function buildMenu() {
 function registerHandlers() {
   ipcMain.handle('start', () => {
     ready = true;
+    void updates?.check(false);
     return { recent: recentItems(), pending: queuedFiles.length };
   });
   ipcMain.handle('open-document', async (_event, requested) => {
@@ -110,6 +115,13 @@ function registerHandlers() {
   });
   ipcMain.handle('skip-pending', () => { queuedFiles.shift(); });
   ipcMain.handle('save-document', saveDocument);
+  ipcMain.handle('check-update', () => {
+    if (portable) return shell.openExternal('https://github.com/LuoYan-33/yejian-editor/releases/latest');
+    if (updates) return void updates.check();
+    windowHandle.webContents.send('update-state', { phase: 'development', version: app.getVersion() });
+  });
+  ipcMain.handle('download-update', () => { void updates?.download(); });
+  ipcMain.handle('install-update', () => updates?.install() ?? false);
   ipcMain.handle('confirm-changes', async () => {
     const result = await dialog.showMessageBox(windowHandle, { type: 'question', message: '要保存当前文档的更改吗？',
       detail: '选择放弃更改将丢失上次保存后的编辑。', buttons: ['保存', '放弃更改', '取消'], defaultId: 0, cancelId: 2 });
@@ -153,11 +165,16 @@ async function launch() {
   windowHandle.webContents.on('will-navigate', event => event.preventDefault());
   windowHandle.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   windowHandle.on('close', event => {
-    if (!ready || allowClose || windowHandle.webContents.isCrashed()) return;
+    if (!ready || allowClose || updates?.installing || windowHandle.webContents.isCrashed()) return;
     event.preventDefault();
     windowHandle.webContents.send('command', 'close');
   });
   windowHandle.once('ready-to-show', () => windowHandle.show());
+  if (app.isPackaged && !portable) {
+    updates = createUpdates(require('electron-updater').autoUpdater, app.getVersion(), state => {
+      if (!windowHandle.isDestroyed()) windowHandle.webContents.send('update-state', state);
+    });
+  }
   await windowHandle.loadFile(path.join(__dirname, '../ui-dist/index.html'));
 }
 

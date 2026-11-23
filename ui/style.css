@@ -98,6 +98,8 @@ main{min-width:0;flex:1;display:flex;flex-direction:column}
 footer{height:29px;flex:none;display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--line);background:#f5f5f0;padding:0 15px;font-size:11px;color:var(--sub);user-select:none}
 .status,.metrics{display:flex;align-items:center}
 .status{gap:7px}
+#updates{display:flex;align-items:center;gap:5px}
+#update-action{color:var(--accent);border-radius:3px;text-decoration:underline;text-underline-offset:2px}
 #state-light{height:6px;width:6px;border-radius:50%;background:#849178}
 #state-light.changed{background:#ae7750}
 .metrics{gap:16px}
