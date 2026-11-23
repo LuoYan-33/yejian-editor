@@ -89,7 +89,7 @@ jobs:
           $files = @($setup, "$setup.blockmap", "release/Yejian-Portable-$env:VERSION-x64.exe", 'release/latest.yml')
           gh release upload $tag @files --clobber
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          $releaseId = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$tag" --jq .id
+          $releaseId = gh release view $tag --json databaseId --jq .databaseId
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           $assets = gh api "repos/$env:GITHUB_REPOSITORY/releases/$releaseId/assets" | ConvertFrom-Json
           foreach ($file in $files) {
