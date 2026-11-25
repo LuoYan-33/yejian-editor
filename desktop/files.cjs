@@ -1,6 +1,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { createHash, randomUUID } = require('node:crypto');
+const { EOL } = require('node:os');
 const { types } = require('./bitmap.cjs');
 
 /** 用文件内容识别外部编辑，避免依赖时间戳精度。 */
@@ -20,7 +21,7 @@ async function readDocument(filePath) {
   }
   if (text.includes('\0')) throw new Error('这个文件包含二进制数据，无法作为 Markdown 打开。');
   const endings = text.match(/\r\n|\r|\n/g) || [];
-  const eol = endings[0] || '\r\n';
+  const eol = endings[0] || EOL;
   return { filePath, text: text.replace(/\r\n?/g, '\n'), bom, eol, revision: fingerprint(bytes) };
 }
 

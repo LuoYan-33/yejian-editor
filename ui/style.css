@@ -8,6 +8,7 @@ i[data-icon],.brand-mark,.icon-button{display:inline-flex;align-items:center;jus
 svg{width:17px;height:17px;flex:none}
 .titlebar{display:flex;align-items:center;height:44px;flex:none;padding:0 145px 0 17px;border-bottom:1px solid var(--line);background:#f4f3ef;app-region:drag;user-select:none}
 .brand{display:flex;align-items:center;gap:9px;font-family:var(--serif);font-size:17px;font-weight:700;letter-spacing:.08em;white-space:nowrap}
+.titlebar[hidden]{display:none}
 .brand-mark{background:var(--accent);color:#fff8ec;border-radius:6px;width:25px;height:25px}
 .brand-mark svg{width:19px;height:19px}
 .menus{display:flex;gap:2px;margin-left:26px;app-region:no-drag}

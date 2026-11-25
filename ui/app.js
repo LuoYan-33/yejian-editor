@@ -221,13 +221,14 @@ function enqueue(action, argument) {
 
 /** 让正文、侧栏和空白处都能接收文件快捷键，并避开中文输入法组词阶段。 */
 function shortcut(event) {
-  if (event.isComposing || event.altKey || event.metaKey) return;
+  if (event.isComposing || event.altKey || (desk.isMac ? event.ctrlKey : event.metaKey)) return;
   const key = event.key.toLowerCase();
   if (['z', 'y'].includes(key) && event.target.closest('input,textarea')) return;
   const keys = { n: 'new', o: 'open', s: 'save', 'shift+s': 'saveAs', f: 'find', b: 'bold', i: 'italic',
     z: 'undo', 'shift+z': 'redo', y: 'redo',
     '1': 'h1', '2': 'h2', '3': 'h3', '/': 'mode', 'shift+l': 'sidebar' };
-  const action = event.ctrlKey ? keys[(event.shiftKey ? 'shift+' : '') + key] : key === 'f8' ? 'focus' : null;
+  const modified = desk.isMac ? event.metaKey : event.ctrlKey;
+  const action = modified ? keys[(event.shiftKey ? 'shift+' : '') + key] : key === 'f8' ? 'focus' : null;
   if (!action) return;
   event.preventDefault();
   event.stopPropagation();
@@ -236,7 +237,12 @@ function shortcut(event) {
 
 /** 建立编辑器并接收启动时从资源管理器传入的文件。 */
 async function start() {
-  showDocument({ name: '使用指南.md', text: guide.trimEnd() }, true);
+  if (desk.isMac) {
+    document.querySelector('.titlebar').hidden = true;
+    for (const hint of document.querySelectorAll('kbd')) hint.textContent = hint.textContent.replace('Ctrl ', '⌘');
+    document.querySelector('.save-button').title = '保存文档（⌘S）';
+  }
+  showDocument({ name: '使用指南.md', text: (desk.isMac ? guide.replaceAll('Ctrl + ', '⌘') : guide).trimEnd() }, true);
   installContextMenu(view, enqueue);
   installImagePaste(view, enqueue);
   for (const button of document.querySelectorAll('[data-menu]')) button.onmousedown = event => event.preventDefault();

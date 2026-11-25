@@ -4,15 +4,24 @@ const path = require('node:path');
 const { readDocument, writeDocument, hasChanged, resolveImage } = require('./files.cjs');
 const { types: imageTypes } = require('./bitmap.cjs');
 const { createUpdates } = require('./updates.cjs');
+const { EOL } = require('node:os');
+const isMac = process.platform === 'darwin';
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'yejian-image', privileges: { standard: true, secure: true } }]);
-app.setAppUserModelId('cn.yejian.markdown.editor');
+if (process.platform === 'win32') app.setAppUserModelId('cn.yejian.markdown.editor');
 let windowHandle, current, menu, ready = false, allowClose = false;
 let recent = [];
 let updates;
 const portable = Boolean(process.env.PORTABLE_EXECUTABLE_FILE);
 const queuedFiles = [];
 const markdownFilter = [{ name: 'Markdown 文档', extensions: ['md', 'markdown', 'mdown', 'mkd', 'txt'] }];
+
+/** 接收系统传入的文档，在窗口就绪后沿用相同的未保存保护。 */
+function queueFile(filePath) {
+  if (!filePath) return;
+  queuedFiles.push(filePath);
+  if (ready) windowHandle.webContents.send('command', 'pending');
+}
 
 /** 识别资源管理器传入的文档，忽略 Electron 的启动参数。 */
 function argumentFile(args, directory) {
@@ -58,7 +67,7 @@ async function saveDocument(_event, text, saveAs, name) {
       detail: '继续保存会用编辑器中的内容写入这个位置。', buttons: ['取消', '继续保存'], defaultId: 0, cancelId: 0 });
     if (choice.response !== 1) return null;
   }
-  current = await writeDocument(filePath, text, current || { eol: '\r\n', bom: false });
+  current = await writeDocument(filePath, text, current || { eol: EOL, bom: false });
   await remember(filePath);
   return { filePath, name: path.basename(filePath), recent: recentItems() };
 }
@@ -67,7 +76,7 @@ async function saveDocument(_event, text, saveAs, name) {
 function buildMenu() {
   const groups = {
     file: ['文件', [['新建文档', 'new', 'Ctrl+N'], ['打开文档…', 'open', 'Ctrl+O'], null,
-      ['保存', 'save', 'Ctrl+S'], ['另存为…', 'saveAs', 'Ctrl+Shift+S'], null, ['关闭窗口', 'close', 'Alt+F4']]],
+      ['保存', 'save', 'Ctrl+S'], ['另存为…', 'saveAs', 'Ctrl+Shift+S'], null, ['关闭窗口', 'close', isMac ? 'Cmd+W' : 'Alt+F4']]],
     edit: ['编辑', [['撤销', 'undo', 'Ctrl+Z'], ['重做', 'redo', 'Ctrl+Shift+Z'], null,
       ['剪切', 'cut'], ['复制', 'copy'], ['粘贴', 'paste'], ['全选', 'selectAll'], null, ['查找与替换', 'find', 'Ctrl+F']]],
     format: ['格式', [['一级标题', 'h1', 'Ctrl+1'], ['二级标题', 'h2', 'Ctrl+2'], ['三级标题', 'h3', 'Ctrl+3'],
@@ -75,16 +84,19 @@ function buildMenu() {
       null, ['引用', 'quote'], ['无序列表', 'bullet'], ['有序列表', 'ordered'], ['任务列表', 'task'], ['代码块', 'fence'],
       null, ['插入图片…', 'image'], ['插入表格', 'table'], ['插入分隔线', 'rule']]],
     view: ['视图', [['切换即时编辑 / 源码', 'mode', 'Ctrl+/'], ['显示 / 隐藏侧栏', 'sidebar', 'Ctrl+Shift+L'], ['专注模式', 'focus', 'F8']]],
-    help: ['帮助', [[portable ? '下载新版免安装包…' : '检查更新', 'checkUpdate']]]
+    help: ['帮助', [[isMac ? '下载 Mac 体验版…' : portable ? '下载新版免安装包…' : '检查更新', 'checkUpdate']]]
   };
-  return Menu.buildFromTemplate(Object.entries(groups).map(([id, [label, items]]) => ({
+  const template = Object.entries(groups).map(([id, [label, items]]) => ({
     id, label, submenu: items.map(item => {
       if (!item) return { type: 'separator' };
       const [label, command, accelerator] = item;
       if (['cut', 'copy', 'paste', 'selectAll'].includes(command)) return { role: command, label };
-      return { label, accelerator, registerAccelerator: false, click: () => windowHandle.webContents.send('command', command) };
+      return { label, accelerator: accelerator?.replace('Ctrl+', 'CmdOrCtrl+'), registerAccelerator: false,
+        click: () => windowHandle.webContents.send('command', command) };
     })
-  })));
+  }));
+  if (isMac) template.unshift({ role: 'appMenu' });
+  return Menu.buildFromTemplate(template);
 }
 
 /** 注册有限的本地文件、原生对话框和窗口操作。 */
@@ -116,6 +128,7 @@ function registerHandlers() {
   ipcMain.handle('skip-pending', () => { queuedFiles.shift(); });
   ipcMain.handle('save-document', saveDocument);
   ipcMain.handle('check-update', () => {
+    if (isMac) return shell.openExternal('https://github.com/LuoYan-33/yejian-editor/releases?q=mac');
     if (portable) return shell.openExternal('https://github.com/LuoYan-33/yejian-editor/releases/latest');
     if (updates) return void updates.check();
     windowHandle.webContents.send('update-state', { phase: 'development', version: app.getVersion() });
@@ -157,8 +170,8 @@ async function launch() {
   Menu.setApplicationMenu(menu);
   registerHandlers();
   windowHandle = new BrowserWindow({ width: 1160, height: 800, minWidth: 640, minHeight: 450, show: false,
-    title: '页间', backgroundColor: '#faf9f6', titleBarStyle: 'hidden', autoHideMenuBar: true,
-    titleBarOverlay: { color: '#f4f3ef', symbolColor: '#565750', height: 43 },
+    title: '页间', backgroundColor: '#faf9f6', titleBarStyle: isMac ? 'default' : 'hidden', autoHideMenuBar: true,
+    titleBarOverlay: isMac ? false : { color: '#f4f3ef', symbolColor: '#565750', height: 43 },
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false }
   });
   windowHandle.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -170,7 +183,7 @@ async function launch() {
     windowHandle.webContents.send('command', 'close');
   });
   windowHandle.once('ready-to-show', () => windowHandle.show());
-  if (app.isPackaged && !portable) {
+  if (app.isPackaged && process.platform === 'win32' && !portable) {
     updates = createUpdates(require('electron-updater').autoUpdater, app.getVersion(), state => {
       if (!windowHandle.isDestroyed()) windowHandle.webContents.send('update-state', state);
     });
@@ -181,14 +194,10 @@ async function launch() {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  const initialFile = argumentFile(process.argv, process.cwd());
-  if (initialFile) queuedFiles.push(initialFile);
+  if (isMac) app.on('open-file', (event, filePath) => { event.preventDefault(); queueFile(filePath); });
+  queueFile(argumentFile(process.argv, process.cwd()));
   app.on('second-instance', (_event, args, directory) => {
-    const filePath = argumentFile(args, directory);
-    if (filePath) {
-      queuedFiles.push(filePath);
-      if (ready) windowHandle.webContents.send('command', 'pending');
-    }
+    queueFile(argumentFile(args, directory));
     if (windowHandle?.isMinimized()) windowHandle.restore();
     windowHandle?.focus();
   });

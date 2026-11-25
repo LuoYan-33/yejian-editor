@@ -186,9 +186,9 @@ export function headings(state) {
   return result;
 }
 
-/** Ctrl + 单击链接时交给系统浏览器，普通单击仍可编辑链接。 */
+/** 按平台快捷键单击链接时交给系统浏览器，普通单击仍可编辑链接。 */
 export function followLink(event, view) {
-  if (!event.ctrlKey) return false;
+  if (!(window.desk.isMac ? event.metaKey : event.ctrlKey)) return false;
   const position = view.posAtCoords({ x: event.clientX, y: event.clientY });
   if (position === null) return false;
   let node = syntaxTree(view.state).resolveInner(position, 1);

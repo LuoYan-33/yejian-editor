@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 // 页面只获得编辑文档所需的操作，文件选择和路径检查由主进程负责。
 contextBridge.exposeInMainWorld('desk', {
+  isMac: process.platform === 'darwin',
   start: () => ipcRenderer.invoke('start'),
   open: recent => ipcRenderer.invoke('open-document', recent),
   pickImage: () => ipcRenderer.invoke('pick-image'),

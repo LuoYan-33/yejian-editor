@@ -10,6 +10,8 @@
     "start": "npm run build && electron .",
     "predist": "node node_modules/electron/install.js",
     "dist": "npm run build && electron-builder --win --x64 --publish never",
+    "predist:mac": "node node_modules/electron/install.js",
+    "dist:mac": "npm run build && electron-builder --mac dmg --publish never",
     "test:desktop": "npm run build && node tests/desktop.cjs",
     "test": "node --test tests/*.test.cjs"
   },
@@ -42,6 +44,16 @@
         "nsis",
         "portable"
       ]
+    },
+    "mac": {
+      "icon": "assets/yejian.icns",
+      "category": "public.app-category.productivity",
+      "identity": "-",
+      "notarize": false,
+      "fileAssociations": [{ "ext": ["md", "markdown", "mdown", "mkd"], "name": "Markdown 文档", "role": "Editor", "rank": "Alternate" }]
+    },
+    "dmg": {
+      "artifactName": "Yejian-Mac-${version}-${arch}.dmg"
     },
     "nsis": {
       "artifactName": "Yejian-Setup-${version}-x64.exe",

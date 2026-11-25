@@ -1,0 +1,107 @@
+name: 发布 Mac 体验版
+run-name: Mac 体验版 · 第 ${{ inputs.preview }} 版
+on:
+  workflow_dispatch:
+    inputs:
+      preview:
+        description: 当前项目版本的体验版序号，从 1 开始递增
+        required: true
+        default: '1'
+        type: string
+
+permissions:
+  contents: read
+concurrency:
+  group: publish-mac-preview
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+            machine: arm64
+          - runner: macos-15-intel
+            arch: x64
+            machine: x86_64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: 确认体验版序号和机器架构
+        env:
+          NUMBER: ${{ inputs.preview }}
+          MACHINE: ${{ matrix.machine }}
+        run: |
+          [[ "$NUMBER" =~ ^[1-9][0-9]{0,5}$ ]]
+          test "$(uname -m)" = "$MACHINE"
+          echo "PREVIEW_VERSION=$(node -p "require('./package.json').version")-mac.$NUMBER" >> "$GITHUB_ENV"
+      - run: npm ci
+      - run: npm test
+      - run: npm run dist:mac -- "-c.extraMetadata.version=$PREVIEW_VERSION"
+      - name: 挂载安装包并测试其中的应用
+        env:
+          ARCH: ${{ matrix.arch }}
+          MACHINE: ${{ matrix.machine }}
+        run: |
+          dmg="release/Yejian-Mac-$PREVIEW_VERSION-$ARCH.dmg"
+          mount="$RUNNER_TEMP/yejian-dmg"
+          mkdir "$mount"
+          hdiutil verify "$dmg"
+          hdiutil attach "$dmg" -readonly -nobrowse -mountpoint "$mount"
+          trap 'hdiutil detach "$mount"' EXIT
+          bundle="$RUNNER_TEMP/页间.app"
+          ditto "$mount/页间.app" "$bundle"
+          codesign --verify --deep --strict "$bundle"
+          binary=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$bundle/Contents/Info.plist")
+          lipo "$bundle/Contents/MacOS/$binary" -verify_arch "$MACHINE"
+          node tests/mac.cjs "$bundle"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-${{ matrix.arch }}
+          path: release/*.dmg
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: mac-*
+          merge-multiple: true
+          path: release
+      - name: 发布并核对两个架构的附件
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ inputs.preview }}
+        run: |
+          version="$(jq -r .version package.json)-mac.$NUMBER"
+          tag="v$version"
+          files=("release/Yejian-Mac-$version-arm64.dmg" "release/Yejian-Mac-$version-x64.dmg")
+          if info=$(gh release view "$tag" --json isDraft,targetCommitish); then
+            jq -e --arg sha "$GITHUB_SHA" '.isDraft and .targetCommitish == $sha' <<< "$info"
+          else
+            gh release create "$tag" --target "$GITHUB_SHA" --draft --prerelease --title "页间 $version · Mac 体验版" --notes-file .github/mac-preview-notes.md
+          fi
+          gh release upload "$tag" "${files[@]}" --clobber
+          id=$(gh release view "$tag" --json databaseId --jq .databaseId)
+          assets=$(gh api "repos/$GITHUB_REPOSITORY/releases/$id/assets")
+          for file in "${files[@]}"; do
+            hash=$(sha256sum "$file" | cut -d' ' -f1)
+            jq -e --arg name "$(basename "$file")" --arg digest "sha256:$hash" 'any(.[]; .name == $name and .digest == $digest)' <<< "$assets"
+          done
+          gh release edit "$tag" --draft=false --prerelease --latest=false
