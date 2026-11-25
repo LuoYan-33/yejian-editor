@@ -23,7 +23,6 @@
       "owner": "LuoYan-33",
       "repo": "yejian-editor"
     },
-    "executableName": "Yejian",
     "asar": true,
     "electronDist": "node_modules/electron/dist",
     "electronLanguages": [
@@ -39,6 +38,7 @@
       "package.json"
     ],
     "win": {
+      "executableName": "Yejian",
       "icon": "assets/yejian.ico",
       "target": [
         "nsis",
