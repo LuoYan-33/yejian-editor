@@ -8,6 +8,19 @@ const { _electron: electron } = require('playwright-core');
 const yaml = require('js-yaml');
 const { version } = require('../package.json');
 
+/** 为隔离运行器预置另一个默认关联，以便验证更新不会替换它。 */
+function seedDefaultAssociation() {
+  execFileSync('reg.exe', ['add', 'HKCU\\Software\\Classes\\.md', '/ve', '/d', 'Yejian.TestExistingMarkdown', '/f']);
+}
+
+/** 核对升级后的注册表仍指向正确的程序并保留原来的默认关联。 */
+function verifyAssociation(executable) {
+  execFileSync('pwsh', ['-NoProfile', '-File',
+    path.join(__dirname, 'verify-windows-association.ps1'), executable], { stdio: 'inherit' });
+  const current = execFileSync('reg.exe', ['query', 'HKCU\\Software\\Classes\\.md', '/ve'], { encoding: 'utf8' });
+  assert.match(current, /REG_SZ\s+Yejian\.TestExistingMarkdown\s*$/);
+}
+
 /** 仅向本机测试窗口提供待发布的真实安装文件和更新清单。 */
 function serveRelease(request, response) {
   const name = new URL(request.url, 'http://localhost').pathname.slice(1);
@@ -43,6 +56,7 @@ async function verifyUpgrade() {
   const executable = path.join(directory, 'Yejian.exe');
   const base = version + '-qa.0';
   const setup = path.resolve('.cache/upgrade-test', 'Yejian-Setup-' + base + '-x64.exe');
+  seedDefaultAssociation();
   execFileSync(setup, ['/S', '/D=' + directory], { timeout: 120000 });
   const server = http.createServer(serveRelease);
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -75,6 +89,7 @@ async function verifyUpgrade() {
     await closed;
     assert.equal(fs.readFileSync(document, 'utf8'), '原文：已保存');
     await verifyRestart(executable);
+    verifyAssociation(executable);
     assert.equal(yaml.load(fs.readFileSync(path.join(directory, 'resources/app-update.yml'), 'utf8')).provider, 'github');
     console.log('真实安装版完成下载、取消重启、保存文档、原地升级及重新打开', base, '→', version);
   } finally {
