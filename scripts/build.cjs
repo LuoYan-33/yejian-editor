@@ -9,6 +9,7 @@ async function build() {
   await esbuild.build({ absWorkingDir: root, entryPoints: ['ui/app.js'], outfile: 'ui-dist/app.js',
     bundle: true, minify: true, target: 'chrome140', legalComments: 'eof', loader: { '.md': 'text' } });
   await fs.copyFile(path.join(root, 'ui/index.html'), path.join(target, 'index.html'));
+  await fs.copyFile(path.join(root, 'assets/yejian.png'), path.join(target, 'yejian.png'));
 }
 
 build().catch(error => { console.error(error); process.exitCode = 1; });

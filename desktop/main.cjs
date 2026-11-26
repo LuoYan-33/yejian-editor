@@ -1,9 +1,11 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, protocol, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme, protocol, shell } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { readDocument, writeDocument, hasChanged, resolveImage } = require('./files.cjs');
 const { types: imageTypes } = require('./bitmap.cjs');
 const { createUpdates } = require('./updates.cjs');
+const { loadAppearance } = require('./appearance.cjs');
+const { backgroundScheme } = require('./appearance-colors.cjs');
 const { EOL } = require('node:os');
 const isMac = process.platform === 'darwin';
 
@@ -12,6 +14,7 @@ if (process.platform === 'win32') app.setAppUserModelId('cn.yejian.markdown.edit
 let windowHandle, current, menu, ready = false, allowClose = false;
 let recent = [];
 let updates;
+let appearance;
 const portable = Boolean(process.env.PORTABLE_EXECUTABLE_FILE);
 const queuedFiles = [];
 const markdownFilter = [{ name: 'Markdown 文档', extensions: ['md', 'markdown', 'mdown', 'mkd', 'txt'] }];
@@ -90,8 +93,8 @@ function buildMenu() {
     id, label, submenu: items.map(item => {
       if (!item) return { type: 'separator' };
       const [label, command, accelerator] = item;
-      if (['cut', 'copy', 'paste', 'selectAll'].includes(command)) return { role: command, label };
-      return { label, accelerator: accelerator?.replace('Ctrl+', 'CmdOrCtrl+'), registerAccelerator: false,
+      if (editRoles.includes(command)) return { id: command, role: command, label };
+      return { id: command, label, accelerator: accelerator?.replace('Ctrl+', 'CmdOrCtrl+'), registerAccelerator: false,
         click: () => windowHandle.webContents.send('command', command) };
     })
   }));
@@ -99,12 +102,31 @@ function buildMenu() {
   return Menu.buildFromTemplate(template);
 }
 
+const editRoles = ['cut', 'copy', 'paste', 'selectAll'];
+
+/** 界面需要自定义配色时，从原生菜单取得同一份命令与快捷键。 */
+function menuItems() {
+  return Object.fromEntries(menu.items.filter(item => item.id).map(group => [group.id,
+    group.submenu.items.map(item => item.type === 'separator' ? null : {
+      id: item.id, label: item.label, accelerator: item.accelerator?.replace('CmdOrCtrl', 'Ctrl')
+    })
+  ]));
+}
+
 /** 注册有限的本地文件、原生对话框和窗口操作。 */
 function registerHandlers() {
   ipcMain.handle('start', () => {
     ready = true;
     void updates?.check(false);
-    return { recent: recentItems(), pending: queuedFiles.length };
+    return { recent: recentItems(), pending: queuedFiles.length, appearance: appearance.current(), menus: isMac ? {} : menuItems() };
+  });
+  ipcMain.handle('save-appearance', async (_event, settings) => {
+    const saved = await appearance.save(settings);
+    applyWindowTheme();
+    return saved;
+  });
+  ipcMain.on('edit-role', (_event, role) => {
+    if (editRoles.includes(role)) windowHandle.webContents[role]();
   });
   ipcMain.handle('open-document', async (_event, requested) => {
     let filePath;
@@ -145,7 +167,12 @@ function registerHandlers() {
     if (typeof url === 'string' && /^https?:\/\//i.test(url)) return shell.openExternal(new URL(url).href);
   });
   ipcMain.on('document-title', (_event, title) => windowHandle.setTitle(String(title) + ' · 页间'));
-  ipcMain.on('finish-close', () => { allowClose = true; windowHandle.close(); });
+  ipcMain.on('finish-close', async () => {
+    await appearance.flush();
+    if (windowHandle.isDestroyed()) return;
+    allowClose = true;
+    windowHandle.close();
+  });
   ipcMain.on('show-menu', (_event, group, point) => menu.getMenuItemById(group)?.submenu?.popup({
     window: windowHandle, x: Math.round(point.x), y: Math.round(point.y)
   }));
@@ -153,6 +180,8 @@ function registerHandlers() {
 
 /** 创建采用系统窗口按钮的桌面编辑器。 */
 async function launch() {
+  appearance = await loadAppearance(path.join(app.getPath('userData'), 'appearance.json'));
+  applyWindowTheme();
   try {
     const data = JSON.parse(await fs.readFile(path.join(app.getPath('userData'), 'recent.json'), 'utf8'));
     if (Array.isArray(data)) recent = data.filter(item => typeof item === 'string' && path.isAbsolute(item)).slice(0, 12);
@@ -169,11 +198,14 @@ async function launch() {
   menu = buildMenu();
   Menu.setApplicationMenu(menu);
   registerHandlers();
+  const uiPath = path.join(__dirname, '../ui-dist');
   windowHandle = new BrowserWindow({ width: 1160, height: 800, minWidth: 640, minHeight: 450, show: false,
-    title: '页间', backgroundColor: '#faf9f6', titleBarStyle: isMac ? 'default' : 'hidden', autoHideMenuBar: true,
-    titleBarOverlay: isMac ? false : { color: '#f4f3ef', symbolColor: '#565750', height: 43 },
+    title: '页间', icon: path.join(uiPath, 'yejian.png'), titleBarStyle: isMac ? 'hiddenInset' : 'hidden', autoHideMenuBar: true,
+    ...windowColors(),
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false }
   });
+  nativeTheme.on('updated', updateWindowColors);
+  windowHandle.once('closed', () => nativeTheme.removeListener('updated', updateWindowColors));
   windowHandle.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   windowHandle.webContents.on('will-navigate', event => event.preventDefault());
   windowHandle.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
@@ -188,7 +220,35 @@ async function launch() {
       if (!windowHandle.isDestroyed()) windowHandle.webContents.send('update-state', state);
     });
   }
-  await windowHandle.loadFile(path.join(__dirname, '../ui-dist/index.html'));
+  await windowHandle.loadFile(path.join(uiPath, 'index.html'));
+}
+
+/** 将当前设置应用到原生界面，背景自定义时按颜色亮度选择明暗。 */
+function applyWindowTheme() {
+  const { theme, background } = appearance.current();
+  nativeTheme.themeSource = background ? backgroundScheme(background) : theme;
+  updateWindowColors();
+}
+
+/** 原生标题栏按钮和窗口底色使用与界面相同的明暗主题。 */
+function windowColors() {
+  const background = appearance.current().background;
+  const dark = background ? backgroundScheme(background) === 'dark' : nativeTheme.shouldUseDarkColors;
+  return {
+    backgroundColor: background ?? (dark ? '#232320' : '#faf9f6'),
+    titleBarOverlay: isMac ? false : {
+      color: background ?? (dark ? '#292823' : '#f4f3ef'),
+      symbolColor: dark ? '#ffffff' : background ? '#000000' : '#565750', height: 43
+    }
+  };
+}
+
+/** 系统切换配色或外观设置生效时更新原生窗口。 */
+function updateWindowColors() {
+  if (!windowHandle || windowHandle.isDestroyed()) return;
+  const { backgroundColor, titleBarOverlay } = windowColors();
+  windowHandle.setBackgroundColor(backgroundColor);
+  if (titleBarOverlay) windowHandle.setTitleBarOverlay(titleBarOverlay);
 }
 
 if (!app.requestSingleInstanceLock()) {

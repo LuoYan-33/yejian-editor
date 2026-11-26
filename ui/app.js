@@ -4,6 +4,8 @@ import { headings, sourceMode } from './live.js';
 import { installIcons } from './icons.js';
 import { installContextMenu } from './context-menu.js';
 import { installImagePaste } from './images.js';
+import { installAppearance } from './appearance.js';
+import { installMenus } from './menus.js';
 import guide from './welcome.md';
 import './style.css';
 
@@ -222,6 +224,7 @@ function enqueue(action, argument) {
 /** 让正文、侧栏和空白处都能接收文件快捷键，并避开中文输入法组词阶段。 */
 function shortcut(event) {
   if (event.isComposing || event.altKey || (desk.isMac ? event.ctrlKey : event.metaKey)) return;
+  if (event.target.closest('#appearance-settings, #app-menu')) return;
   const key = event.key.toLowerCase();
   if (['z', 'y'].includes(key) && event.target.closest('input,textarea')) return;
   const keys = { n: 'new', o: 'open', s: 'save', 'shift+s': 'saveAs', f: 'find', b: 'bold', i: 'italic',
@@ -238,19 +241,15 @@ function shortcut(event) {
 /** 建立编辑器并接收启动时从资源管理器传入的文件。 */
 async function start() {
   if (desk.isMac) {
-    document.querySelector('.titlebar').hidden = true;
+    document.querySelector('.menus').hidden = true;
+    document.body.classList.add('platform-mac');
     for (const hint of document.querySelectorAll('kbd')) hint.textContent = hint.textContent.replace('Ctrl ', '⌘');
     document.querySelector('.save-button').title = '保存文档（⌘S）';
   }
   showDocument({ name: '使用指南.md', text: (desk.isMac ? guide.replaceAll('Ctrl + ', '⌘') : guide).trimEnd() }, true);
   installContextMenu(view, enqueue);
   installImagePaste(view, enqueue);
-  for (const button of document.querySelectorAll('[data-menu]')) button.onmousedown = event => event.preventDefault();
   for (const button of document.querySelectorAll('[data-action]')) button.onclick = () => enqueue(button.dataset.action);
-  for (const button of document.querySelectorAll('[data-menu]')) button.onclick = () => {
-    const rect = button.getBoundingClientRect();
-    desk.menu(button.dataset.menu, { x: rect.left, y: rect.bottom + 2 });
-  };
   element('live-mode').onclick = () => switchMode(false);
   element('source-mode').onclick = () => switchMode(true);
   element('outline-tab').onclick = () => { tab = 'outline'; refreshNavigation(); };
@@ -259,6 +258,8 @@ async function start() {
   desk.onUpdateState(showUpdate);
   window.addEventListener('keydown', shortcut, true);
   const initial = await desk.start();
+  installAppearance(desk, initial.appearance);
+  if (!desk.isMac) installMenus(desk, initial.menus, enqueue);
   recent = initial.recent;
   for (let index = 0; index < initial.pending; index++) await enqueue('pending');
 }

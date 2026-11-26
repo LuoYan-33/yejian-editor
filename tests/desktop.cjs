@@ -6,6 +6,55 @@ const os = require('node:os');
 const { verifyRichEditing } = require('./rich-editing.cjs');
 const { verifyQuickInsert } = require('./quick-insert.cjs');
 
+/** 验证应用图标入口、深色主题、整窗背景和恢复默认。 */
+async function verifyAppearance(page) {
+  const entry = page.getByRole('button', { name: '外观设置' });
+  const panel = page.getByRole('dialog', { name: '外观设置' });
+  const theme = panel.getByLabel('主题');
+  const background = panel.getByLabel('窗口背景色');
+  const editor = page.locator('#editor');
+  const titlebar = page.locator('.titlebar');
+  const sidebar = page.locator('aside');
+  const initialText = await editor.locator('.cm-content').innerText();
+
+  await entry.click();
+  await panel.waitFor();
+  assert.equal(await entry.locator('img').evaluate(image => image.naturalWidth), 256);
+  await theme.selectOption('dark');
+  assert.equal(await titlebar.evaluate(node => getComputedStyle(node).backgroundColor), 'rgb(41, 40, 35)');
+  assert.equal(await editor.evaluate(node => getComputedStyle(node).backgroundColor), 'rgb(35, 35, 32)');
+
+  await background.fill('#f6dfb4');
+  assert.equal(await editor.evaluate(node => getComputedStyle(node).backgroundColor), 'rgb(246, 223, 180)');
+  assert.equal(await editor.evaluate(node => getComputedStyle(node).color), 'rgb(0, 0, 0)');
+  assert.equal(await titlebar.evaluate(node => getComputedStyle(node).backgroundColor), 'rgb(246, 223, 180)');
+  assert.equal(await sidebar.evaluate(node => getComputedStyle(node).backgroundColor), await page.locator('footer').evaluate(node => getComputedStyle(node).backgroundColor));
+  const panelColor = await panel.evaluate(node => getComputedStyle(node).backgroundColor);
+  await page.keyboard.press('Escape');
+  if (await page.locator('[data-menu="view"]').isVisible()) {
+    await page.locator('[data-menu="view"]').click();
+    const menu = page.getByRole('menu', { name: '应用菜单' });
+    await menu.waitFor();
+    assert.equal(await menu.evaluate(node => getComputedStyle(node).backgroundColor), panelColor);
+    await menu.getByRole('menuitem', { name: /侧栏/ }).click();
+    await sidebar.waitFor({ state: 'hidden' });
+    await page.locator('#expand').click();
+    await sidebar.waitFor();
+  }
+  await entry.click();
+  await theme.selectOption('light');
+  assert.equal(await background.inputValue(), '#f6dfb4');
+  await background.fill('#191e24');
+  assert.equal(await editor.evaluate(node => getComputedStyle(node).color), 'rgb(255, 255, 255)');
+  await panel.getByRole('button', { name: '使用主题默认背景' }).click();
+  assert.equal(await background.inputValue(), '#fcfbf8');
+  assert.equal(await editor.evaluate(node => getComputedStyle(node).backgroundColor), 'rgb(252, 251, 248)');
+  await page.keyboard.press('Escape');
+  await panel.waitFor({ state: 'hidden' });
+  assert.equal(await editor.locator('.cm-content').innerText(), initialText);
+  assert.equal(await page.locator('#dirty-dot').isVisible(), false);
+}
+
 /** 打开真实桌面窗口，用临时文件代替人工在系统文件选择框中挑选文件。 */
 async function verify() {
   const root = path.resolve(__dirname, '..');
@@ -20,6 +69,7 @@ async function verify() {
     page.on('pageerror', error => errors.push(error.message));
     await page.locator('.line-h1').waitFor();
     assert.equal(await page.locator('.nav-item').count(), 5);
+    await verifyAppearance(page);
     await fs.mkdir(path.join(root, '.cache'), { recursive: true });
     await page.screenshot({ path: path.join(root, '.cache', 'welcome.png') });
     const file = path.join(temporary, '集成验证.md'), copy = path.join(temporary, '另存.md');
@@ -76,7 +126,7 @@ async function verify() {
     await verifyRichEditing(page, file);
     await verifyQuickInsert(app, page, temporary);
     assert.deepEqual(errors, []);
-    console.log('真实窗口通过：大纲、表格、待办、打开、保存、另存为、源码、取消放弃、撤销隔离、专注和查找。');
+    console.log('真实窗口通过：外观设置、大纲、表格、待办、打开、保存、另存为、源码、取消放弃、撤销隔离、专注和查找。');
   } finally {
     await app.evaluate(({ app }) => app.exit(0)).catch(() => {});
     await app.close().catch(() => {});

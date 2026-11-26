@@ -1,5 +1,4 @@
 const shapes = {
-  book: '<path d="M4 5.5c3.3-.9 5.9-.3 8 1.4v13c-2.1-1.7-4.7-2.3-8-1.4zM12 6.9c2.2-1.7 4.8-2.3 8-1.4v13c-3.2-.9-5.8-.3-8 1.4"/><path d="M7 9.5l2 .4m6-.4 2-.4"/>',
   panel: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>',
   outline: '<path d="M9 6h11M9 12h8M9 18h11M4 6h.1M4 12h.1M4 18h.1"/>',
   clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/>',

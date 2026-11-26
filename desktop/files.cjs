@@ -25,9 +25,8 @@ async function readDocument(filePath) {
   return { filePath, text: text.replace(/\r\n?/g, '\n'), bom, eol, revision: fingerprint(bytes) };
 }
 
-/** 对已有文档按原编码写入，成功后才替换目标文件。 */
-async function writeDocument(filePath, text, format) {
-  const bytes = Buffer.from((format.bom ? '\uFEFF' : '') + text.replace(/\n/g, format.eol), 'utf8');
+/** 先写入同目录的临时文件，再一次性替换目标文件。 */
+async function writeAtomically(filePath, bytes) {
   const temporary = path.join(path.dirname(filePath), '.yejian-' + randomUUID() + '.tmp');
   try {
     await fs.writeFile(temporary, bytes, { flag: 'wx' });
@@ -35,6 +34,12 @@ async function writeDocument(filePath, text, format) {
   } finally {
     await fs.rm(temporary, { force: true });
   }
+}
+
+/** 对已有文档按原编码写入，成功后才替换目标文件。 */
+async function writeDocument(filePath, text, format) {
+  const bytes = Buffer.from((format.bom ? '\uFEFF' : '') + text.replace(/\n/g, format.eol), 'utf8');
+  await writeAtomically(filePath, bytes);
   return { filePath, bom: format.bom, eol: format.eol, revision: fingerprint(bytes) };
 }
 
@@ -60,4 +65,4 @@ async function resolveImage(documentPath, relative) {
   return type ? { path: imagePath, type } : null;
 }
 
-module.exports = { readDocument, writeDocument, hasChanged, resolveImage };
+module.exports = { readDocument, writeDocument, writeAtomically, hasChanged, resolveImage };

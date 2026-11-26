@@ -4,6 +4,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('desk', {
   isMac: process.platform === 'darwin',
   start: () => ipcRenderer.invoke('start'),
+  saveAppearance: settings => ipcRenderer.invoke('save-appearance', settings),
   open: recent => ipcRenderer.invoke('open-document', recent),
   pickImage: () => ipcRenderer.invoke('pick-image'),
   skipPending: () => ipcRenderer.invoke('skip-pending'),
@@ -16,6 +17,7 @@ contextBridge.exposeInMainWorld('desk', {
   onUpdateState: callback => ipcRenderer.on('update-state', (_event, state) => callback(state)),
   error: message => ipcRenderer.invoke('show-error', message),
   title: title => ipcRenderer.send('document-title', title),
+  edit: role => ipcRenderer.send('edit-role', role),
   menu: (name, point) => ipcRenderer.send('show-menu', name, point),
   link: url => ipcRenderer.invoke('open-link', url),
   close: () => ipcRenderer.send('finish-close'),

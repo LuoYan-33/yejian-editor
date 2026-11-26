@@ -1,16 +1,43 @@
 import { Compartment, EditorState, Prec } from '@codemirror/state';
 import { drawSelection, EditorView, keymap, placeholder, scrollPastEnd } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab, redo, undo } from '@codemirror/commands';
-import { defaultHighlightStyle, syntaxHighlighting, syntaxTree } from '@codemirror/language';
+import { HighlightStyle, syntaxHighlighting, syntaxTree } from '@codemirror/language';
 import { deleteMarkupBackward, insertNewlineContinueMarkupCommand, markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { search, searchKeymap, openSearchPanel } from '@codemirror/search';
+import { tags } from '@lezer/highlight';
 import { followLink, liveMarkdown, setSource, sourceMode } from './live.js';
 import { activeGrid, gridAt } from './table.js';
 import { visibleStart } from './edit-boundaries.js';
 import { insertImage } from './images.js';
 
 const highlighting = new Compartment();
-const sourceHighlight = syntaxHighlighting(defaultHighlightStyle);
+
+/** 保留浅色语法配色，并为深色和自定义窗口背景提供可读的前景色。 */
+function syntaxColor(light, dark) {
+  return `var(--editor-ink, light-dark(${light}, ${dark}))`;
+}
+
+const sourceHighlight = syntaxHighlighting(HighlightStyle.define([
+  { tag: tags.meta, color: syntaxColor('#404740', '#c0bcb1') },
+  { tag: tags.link, textDecoration: 'underline' },
+  { tag: tags.heading, textDecoration: 'underline', fontWeight: 'bold' },
+  { tag: tags.emphasis, fontStyle: 'italic' },
+  { tag: tags.strong, fontWeight: 'bold' },
+  { tag: tags.strikethrough, textDecoration: 'line-through' },
+  { tag: tags.keyword, color: syntaxColor('#708', '#deb2ef') },
+  { tag: [tags.atom, tags.bool, tags.url, tags.contentSeparator, tags.labelName], color: syntaxColor('#219', '#a8bbf0') },
+  { tag: [tags.literal, tags.inserted], color: syntaxColor('#164', '#a5d5b6') },
+  { tag: [tags.string, tags.deleted], color: syntaxColor('#a11', '#f3ab9a') },
+  { tag: [tags.regexp, tags.escape, tags.special(tags.string)], color: syntaxColor('#e40', '#f4b187') },
+  { tag: tags.definition(tags.variableName), color: syntaxColor('#00f', '#a8bbf0') },
+  { tag: tags.local(tags.variableName), color: syntaxColor('#30a', '#deb2ef') },
+  { tag: [tags.typeName, tags.namespace], color: syntaxColor('#085', '#a5d5b6') },
+  { tag: tags.className, color: syntaxColor('#167', '#9ed0dc') },
+  { tag: [tags.special(tags.variableName), tags.macroName], color: syntaxColor('#256', '#9ed0dc') },
+  { tag: tags.definition(tags.propertyName), color: syntaxColor('#00c', '#a8bbf0') },
+  { tag: tags.comment, color: syntaxColor('#940', '#ddba91') },
+  { tag: tags.invalid, color: syntaxColor('#f00', '#ff9f91') }
+]));
 const continueMarkup = insertNewlineContinueMarkupCommand({ nonTightLists: false });
 const listKeys = Prec.high(keymap.of([
   { key: 'Enter', run: continueList },
