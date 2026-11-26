@@ -1,6 +1,6 @@
 {
   "name": "yejian-editor",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "页间 Markdown 编辑器",
   "author": "页间",
   "private": true,
@@ -50,7 +50,19 @@
       "category": "public.app-category.productivity",
       "identity": "-",
       "notarize": false,
-      "fileAssociations": [{ "ext": ["md", "markdown", "mdown", "mkd"], "name": "Markdown 文档", "role": "Editor", "rank": "Alternate" }]
+      "fileAssociations": [
+        {
+          "ext": [
+            "md",
+            "markdown",
+            "mdown",
+            "mkd"
+          ],
+          "name": "Markdown 文档",
+          "role": "Editor",
+          "rank": "Alternate"
+        }
+      ]
     },
     "dmg": {
       "artifactName": "Yejian-Mac-${version}-${arch}.dmg"
